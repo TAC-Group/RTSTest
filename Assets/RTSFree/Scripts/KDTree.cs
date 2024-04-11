@@ -17,6 +17,7 @@
 
 //  Adopted to meet project needs by chanfort.
 
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace RTSToolkitFree
@@ -178,49 +179,67 @@ namespace RTSToolkitFree
             return result;
         }
 
-        //	Find the nearest point in the set to the supplied point.
-        public int FindNearest(Vector3 pt)
+
+        public delegate bool Allow(int argIndex);
+
+        public bool AllowEmpty(int argIndex) { return true; }
+
+        public TreePath FindNearest(Vector3 pt)
         {
-            float bestSqDist = float.MaxValue;
+            return FindNearest(pt, AllowEmpty);
+        }
+
+		//	Find the nearest point in the set to the supplied point.
+		public TreePath FindNearest(Vector3 pt, Allow argAllowAction)
+        {
+			TreePath path = new TreePath();
+
+			float bestDistance = float.MaxValue;
             int bestIndex = -1;
 
-            Search(pt, ref bestSqDist, ref bestIndex);
+            Search(pt, ref bestDistance, ref bestIndex, ref path, ref argAllowAction);
 
-            return bestIndex - 1;
-        }
+            return path;
+			//return bestIndex - 1;
+		}
 
-        //	Recursively search the tree.
-        void Search(Vector3 pt, ref float bestSqSoFar, ref int bestIndex)
-        {
-            float mySqDist = (pivot - pt).sqrMagnitude;
+		//	Recursively search the tree.
+		void Search(Vector3 pt, ref float bestSoFar, ref int bestIndex, ref TreePath retPath, ref Allow argAllowAction)
+		{
+            /*if (pivotIndex == 0) 
+            { 
+                return; 
+            }*/
+			float d = Vector3.Distance(pivot, pt);
 
-            if (mySqDist < bestSqSoFar)
-            {
-                bestSqSoFar = mySqDist;
-                bestIndex = pivotIndex;
-            }
+			if (d < bestSoFar && argAllowAction(pivotIndex - 1))
+			{
+				bestSoFar = d;
+				bestIndex = pivotIndex;
 
-            float planeDist = pt[axis] - pivot[axis];
+                retPath.Index.Add(bestIndex - 1);
+                retPath.Distance.Add(d);
+			}
 
-            int selector = planeDist <= 0 ? 0 : 1;
+			float planeDist = pt[axis] - pivot[axis];
 
-            if (lr[selector] != null)
-            {
-                lr[selector].Search(pt, ref bestSqSoFar, ref bestIndex);
-            }
+			int selector = planeDist <= 0 ? 0 : 1;
 
-            selector = (selector + 1) % 2;
+			if (lr[selector] != null)
+			{
+				lr[selector].Search(pt, ref bestSoFar, ref bestIndex, ref retPath, ref argAllowAction);
+			}
 
-            float sqPlaneDist = planeDist * planeDist;
+			selector = (selector + 1) % 2;
 
-            if ((lr[selector] != null) && (bestSqSoFar > sqPlaneDist))
-            {
-                lr[selector].Search(pt, ref bestSqSoFar, ref bestIndex);
-            }
-        }
+			if ((lr[selector] != null) && (bestSoFar > planeDist))
+			{
+				lr[selector].Search(pt, ref bestSoFar, ref bestIndex, ref retPath, ref argAllowAction);
+			}
+		}
 
-        //	Get a point's distance from an axis-aligned plane.
-        float DistFromSplitPlane(Vector3 pt, Vector3 planePt, int axis)
+		//	Get a point's distance from an axis-aligned plane.
+		float DistFromSplitPlane(Vector3 pt, Vector3 planePt, int axis)
         {
             return pt[axis] - planePt[axis];
         }
@@ -245,4 +264,17 @@ namespace RTSToolkitFree
             return result;
         }
     }
+
+	public class TreePath
+	{
+		public List<int> Index;
+		public List<float> Distance;
+
+		public TreePath()
+		{
+			Index = new List<int>();
+			Distance = new List<float>();
+		}
+	}
+
 }

@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-
 using UnityEngine;
+using static RTSToolkitFree.KDTree;
 
 // Управление сражениям проходит через 4 фазы: Search (поиск противника), Retarget (реакция на смену ближайшего противника)
 // Approach (движение к противнику), Attack (атака противника) 
@@ -19,9 +19,10 @@ namespace RTSToolkitFree
 		public int playerNation = 0;
 
 		public List<Unit> allUnits = new List<Unit>();
+		public Dictionary<int, Unit> UnitIndex = new Dictionary<int, Unit>();
 
-		List<List<Unit>> targets = new List<List<Unit>>();
-		List<KDTree> targetKD = new List<KDTree>();
+		public List<List<Unit>> targets = new List<List<Unit>>();
+		public List<KDTree> targetKD = new List<KDTree>();
 
 		public int randomSeed = 0;
 
@@ -39,15 +40,15 @@ namespace RTSToolkitFree
 
         void Update()
         {
-            UpdateWithoutStatistics();
+            Calc();
         }
 
-        void UpdateWithoutStatistics()
+        void Calc()
         {
-			UpdateRate(SearchPhase, "Search", 0.1f);
-			UpdateRate(RetargetPhase, "Retarget", 0.01f);
-			UpdateRate(ApproachPhase, "Approach", 0.1f);
-			UpdateRate(AttackPhase, "Attack", 0.1f);
+			UpdateRate(SearchPhase, "Search", 1.0f);
+			UpdateRate(RetargetPhase, "Retarget", 1.0f);
+			UpdateRate(ApproachPhase, "Approach", 1.0f);
+			UpdateRate(AttackPhase, "Attack", 1.0f);
 
             DeathPhase();
         }
@@ -66,11 +67,7 @@ namespace RTSToolkitFree
                     for (int j = 0; j < allUnits.Count; j++)
                     {
                         Unit up = allUnits[j];
-                        if (
-                            up.nation != i &&
-                            up.IsApproachable &&
-                            up.attackers.Count < up.maxAttackers
-                        )
+                        if (up.nation != i && up.isMovable == true && up.IsApproachable == true)
                         {
                             nationTargets.Add(up);
                             nationTargetPositions.Add(up.transform.position);
@@ -144,21 +141,141 @@ namespace RTSToolkitFree
 			{
 				if (allUnits[i].IsDead)
 				{
+					UnitIndex.Remove(allUnits[i].Id);
+
 					allUnits.RemoveAt(i);
 				}
 			}
 		}
 
-
-		public Unit FindNearest(int nation, Vector3 argPosition)
-        {
-            if (nation < targets.Count && targets[nation].Count > 0)
-            {
-                int targetId = targetKD[nation].FindNearest(argPosition);
-                return targets[nation][targetId];
-            }
-            return null;
+		public Unit FindNearestUnit(int nation, Vector3 argPosition)
+		{
+			if (nation < targetKD.Count && targetKD[nation] != null)
+			{
+				return FindNearestUnit(nation, argPosition, targetKD[nation].AllowEmpty);
+			}
+			else { return null; }
 		}
 
-    }
+		public Unit FindNearestUnit(int nation, Vector3 argPosition, Allow argAllowAction)
+		{
+			Unit ret = null;
+			if (nation < targets.Count && targets[nation].Count > 0)
+			{
+				TreePath path = FindNearest(nation, argPosition, argAllowAction);
+				if (path != null && path.Index.Count > 0)
+				{
+					ret = targets[nation][path.Index[path.Index.Count - 1]];
+				}
+			}
+			return ret;
+		}
+
+		public TreePath FindNearest(int nation, Vector3 argPosition)
+		{
+			if (nation < targetKD.Count && targetKD[nation] != null)
+			{
+				return FindNearest(nation, argPosition, targetKD[nation].AllowEmpty);
+			}
+			else { return null; }
+		}
+
+		public TreePath FindNearest(int nation, Vector3 argPosition, Allow argAllowAction)
+        {
+			TreePath ret = null;
+            if (nation < targets.Count && targets[nation].Count > 0)
+            {
+                ret = targetKD[nation].FindNearest(argPosition, argAllowAction);
+            }
+            return ret;
+		}
+
+		public Unit FindNearest2(Unit argUnit)
+		{
+			Unit best = null;
+			float bestD = float.MaxValue;
+            for (int i = 0; i < allUnits.Count; i++)
+            {
+				if (allUnits[i].nation != argUnit.nation &&
+					argUnit.IsDead == false &&
+					argUnit.attackers.Count < argUnit.maxAttackers)
+				{
+					float d = Vector3.Distance(argUnit.transform.position, allUnits[i].transform.position);
+					if (d < bestD)
+					{ 
+						bestD = d;
+						best = allUnits[i];
+					}
+				}
+            }
+			return best;
+		}
+
+
+#if UNITY_EDITOR
+		public void OnDrawGizmos()
+		{
+			for (int i = 0; i < allUnits.Count; i++)
+			{
+				if (allUnits[i].IsDead == false)
+				{
+					DrawAttackers(allUnits[i]);
+				}
+			}
+		}
+
+		public void DrawAttackers(Unit argUnit)
+		{
+			var oldColor = UnityEditor.Handles.color;
+
+			Color color = Color.grey;
+
+			/*if (argUnit.nation == 1)
+			{
+				UnityEditor.Handles.color = Color.blue;
+				if (argUnit.target != null)
+				{
+					UnityEditor.Handles.DrawLine(argUnit.transform.position, argUnit.target.transform.position);
+				}
+
+				return;
+			}*/
+
+			if (argUnit.nation == 0)
+			{
+				color = Color.red;
+			}
+			else if (argUnit.nation == 1)
+			{
+				color = Color.blue;
+			}
+
+
+				//color.a = 0.1f;
+
+
+
+			UnityEditor.Handles.color = color;
+
+			for (int i = 0; i < argUnit.attackers.Count; i++)
+			{
+				if (UnitIndex.ContainsKey(argUnit.attackers[i]))
+				{
+					if (argUnit.target != null && UnitIndex[argUnit.attackers[i]].Id == argUnit.target.Id)
+					{
+						UnityEditor.Handles.color = Color.black;
+					}
+					else
+					{
+						UnityEditor.Handles.color = color;
+					}
+
+					UnityEditor.Handles.DrawLine(argUnit.transform.position, UnitIndex[argUnit.attackers[i]].transform.position);
+				}
+			}
+		}
+#endif
+
+
+	}
 }

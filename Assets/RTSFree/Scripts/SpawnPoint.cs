@@ -1,106 +1,77 @@
-﻿using UnityEngine;
+﻿using System.Collections;
+using Unity.VisualScripting;
+using UnityEngine;
 
 namespace RTSToolkitFree
 {
     public class SpawnPoint : MonoBehaviour
     {
         public GameObject objectToSpawn;
-        public float timestep = 0.01f;
+        public float TimeStep = 0.01f;
         public int numberOfObjects = 10000;
         public float size = 1.0f;
 
-        Terrain ter;
         public bool randomizeRotation = true;
-        public Vector3 posOffset;
+        public Vector3 Offset;
 
-        void Awake()
-        {
-
-        }
 
         void Start()
         {
-            ter = FindObjectOfType<Terrain>();
-        }
+		 	StartCoroutine(Spawn());
+		}
 
-        void Update()
+
+        IEnumerator Spawn()
         {
-            Spawn();
-        }
-
-        float tSpawn = 0f;
-        void Spawn()
-        {
-            if (numberOfObjects <= 0)
+            while(numberOfObjects > 0)
             {
-                return;
-            }
 
-            tSpawn -= Time.deltaTime;
-            if (tSpawn > 0f)
-            {
-                return;
-            }
-
-            Unit spawnPointUp = GetComponent<Unit>();
-            if(spawnPointUp != null)
-            {
-                if(spawnPointUp.IsDead)
+                Unit spawnPointUp = GetComponent<Unit>();
+                if(spawnPointUp != null)
                 {
-                    numberOfObjects = 0;
-                    return;
-                }
-            }
-
-            Quaternion rot = transform.rotation;
-            if (randomizeRotation)
-            {
-                rot = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
-            }
-
-            Vector2 randPos = Random.insideUnitCircle * size;
-
-            Vector3 pos = transform.position + new Vector3(randPos.x, 0f, randPos.y) + transform.rotation * posOffset;
-            pos = TerrainVector(pos, ter);
-
-            GameObject instance = Instantiate(objectToSpawn, pos, rot);
-            Unit instanceUp = instance.GetComponent<Unit>();
-
-            if (instanceUp != null)
-            {
-                if(instanceUp.nation >= BattleSystem.active.numberNations)
-                {
-                    BattleSystem.active.AddNation();
+                    if(spawnPointUp.IsDead)
+                    {
+                        numberOfObjects = 0;
+                        break;
+                    }
                 }
 
-                instanceUp.isReady = true;
-
-                if (instanceUp.changeMaterial)
+                Quaternion rotation = transform.rotation;
+                if (randomizeRotation)
                 {
-                    instanceUp.GetComponent<Renderer>().material.color = Color.yellow;
+                    rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
                 }
-            }
 
-            BattleSystem.active.allUnits.Add(instanceUp);
+                Vector2 randPos = Random.insideUnitCircle * size;
 
-            numberOfObjects--;
-            tSpawn = timestep;
-        }
+                Vector3 position = transform.position + new Vector3(randPos.x, 0f, randPos.y) + transform.rotation * Offset;
+                position = World.GetTerrainPosition(position);
 
-        Vector3 TerrainVector(Vector3 origin, Terrain ter1)
-        {
-            if (ter1 == null)
-            {
-                return origin;
-            }
+                GameObject instance = World.Create(objectToSpawn, position, rotation);
 
-            Vector3 planeVect = new Vector3(origin.x, 0f, origin.z);
-            float y = ter1.SampleHeight(planeVect);
+                Unit unit = instance.GetComponent<Unit>();
+                if (unit != null)
+                {
+                    if(unit.nation >= BattleSystem.active.numberNations)
+                    {
+                        BattleSystem.active.AddNation();
+                    }
 
-            y = y + ter1.transform.position.y;
+                    unit.Init();
 
-            Vector3 tv = new Vector3(origin.x, y, origin.z);
-            return tv;
-        }
+					unit.Id = World.GetId();
+
+
+                    unit.ChangeMaterial(Color.white);
+
+					BattleSystem.active.allUnits.Add(unit);
+					BattleSystem.active.UnitIndex.Add(unit.Id, unit);
+				}
+
+				numberOfObjects--;
+			    yield return new WaitForSeconds(TimeStep);
+			}
+		}
+
     }
 }

@@ -149,7 +149,7 @@ namespace RTSToolkitFree
                             if (up.target != null)
                             {
                                 Unit currentTarget = up.target.GetComponent<Unit>();
-                                currentTarget.attackers.Remove(up);
+                                currentTarget.attackers.Remove(up.Id);
                                 //currentTarget.noAttackers = currentTarget.attackers.Count;
                                 up.target = null;
                             }

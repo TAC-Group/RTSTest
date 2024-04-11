@@ -92,7 +92,7 @@ public class Defender_AI : MonoBehaviour
     Transform FindClosestEnemy()
     {
 		Transform closest = null;
-		Unit unit = BattleSystem.active.FindNearest(1, transform.position);
+		Unit unit = BattleSystem.active.FindNearestUnit(1, transform.position);
         if (unit != null)
         { 
             closest = unit.transform;

@@ -2,16 +2,78 @@
 using System.Collections.Generic;
 using System.Collections;
 using UnityEngine.AI;
+using UnityEngine.UI;
+using UnityEngine.UIElements;
 
 namespace RTSToolkitFree
 {
 	public class Unit : MonoBehaviour, IHealth
 	{
+		public Text Name;
+		public int id;
+		public int Id
+		{
+			get { return id; }
+			set 
+			{
+				id = value;
+				if (Name != null)
+				{
+					Name.text = id.ToString();
+				}
+			}
+		}
+
 		public bool isMovable = true;
 
-		public bool isReady = false;
-		public bool isApproaching = false;
+		public bool isManual = false;
+
+		/// <summary>
+		/// Двигается ли юнит к цели
+		/// </summary>
+		public bool isMoving = false;
+		public bool IsMoving
+		{
+			get { return isMoving; }
+			set
+			{
+				isMoving = value;
+				if (isMoving == true)
+				{
+					ChangeMaterial(Color.green);
+				}
+				else
+				{
+					ChangeMaterial(Color.yellow);
+				}
+			}
+		}
+
+
+
+		/// <summary>
+		/// Атакует
+		/// </summary>
 		public bool isAttacking = false;
+
+		public bool IsAttacking
+		{
+			get { return isAttacking; }
+			set 
+			{ 
+				isAttacking = value;
+				if (isAttacking == true)
+				{
+					ChangeMaterial(Color.red);
+				}
+				else
+				{
+					IsMoving = false;
+					ChangeMaterial(Color.yellow);
+				}
+			}
+		}
+
 
 		/// <summary>
 		/// Начал ли юнит процесс умирания
@@ -19,7 +81,8 @@ namespace RTSToolkitFree
 		private bool isDying = false;
 
 		public Unit target = null;
-		public List<Unit> attackers = new List<Unit>();
+		public List<int> attackers = new List<int>();
+		public List<int> oldAttackers = new List<int>();
 
 		//public int noAttackers = 0;
 		public int maxAttackers = 3;
@@ -86,6 +149,10 @@ namespace RTSToolkitFree
 
 		void Start()
 		{
+		}
+
+		public void Init()
+		{
 			agent = GetComponent<NavMeshAgent>();
 			renderer = GetComponent<Renderer>();
 			StatusBar = GetComponentInChildren<StatusBar>();
@@ -100,9 +167,8 @@ namespace RTSToolkitFree
 		public IEnumerator DelayDeath(float argTime)
 		{
 			isMovable = false;
-			isReady = false;
-			isApproaching = false;
-			isAttacking = false;
+			IsMoving = false;
+			IsAttacking = false;
 			target = null;
 
 			// unselecting deads	
@@ -112,14 +178,11 @@ namespace RTSToolkitFree
 				manualControl.IsSelected = false;
 			}
 
-			transform.gameObject.tag = "Untagged";
-
 			GetComponent<UnityEngine.AI.NavMeshAgent>().enabled = false;
 
-			if (changeMaterial)
-			{
-				GetComponent<Renderer>().material.color = Color.blue;
-			}
+
+			ChangeMaterial(Color.blue);
+
 			yield return new WaitForSeconds(argTime);
 			StartCoroutine(DelaySink());
 		}
@@ -128,16 +191,13 @@ namespace RTSToolkitFree
 
 		public IEnumerator DelaySink()
 		{
-			if (changeMaterial)
-			{
-				GetComponent<Renderer>().material.color = new Color((148.0f / 255.0f), (0.0f / 255.0f), (211.0f / 255.0f), 1.0f);
-			}
+			ChangeMaterial(new Color((148.0f / 255.0f), (0.0f / 255.0f), (211.0f / 255.0f), 1.0f));
 
 			// moving sinking object down into the ground	
 			while (transform.position.y > -1.0f)
 			{
-				float sinkSpeed = -0.2f;
-				transform.position += new Vector3(0f, sinkSpeed * Time.deltaTime / sinkUpdateFraction, 0f);
+				float sinkSpeed = -0.01f;
+				transform.position += new Vector3(0f, sinkSpeed, 0f);
 				yield return new WaitForSeconds(0.1f);
 			}
 
@@ -147,8 +207,9 @@ namespace RTSToolkitFree
 
 		public void ResetSearching()
 		{
-			isApproaching = false;
-			isAttacking = false;
+			isManual = false;
+			IsMoving = false;
+			IsAttacking = false;
 			target = null;
 
 			if (agent.enabled)
@@ -156,21 +217,16 @@ namespace RTSToolkitFree
 				agent.SetDestination(transform.position);
 			}
 
-			if (changeMaterial)
-			{
-				GetComponent<Renderer>().material.color = Color.yellow;
-			}
-
-			isReady = true;
+			ChangeMaterial(Color.yellow);
 		}
 
 		public void UnSetSearching()
 		{
 			if (isMovable)
 			{
-				isReady = false;
-				isApproaching = false;
-				isAttacking = false;
+				isManual = true;
+				IsMoving = false;
+				IsAttacking = false;
 				target = null;
 
 				if (agent.enabled)
@@ -178,10 +234,7 @@ namespace RTSToolkitFree
 					agent.SetDestination(transform.position);
 				}
 
-				if (changeMaterial)
-				{
-					GetComponent<Renderer>().material.color = Color.grey;
-				}
+				ChangeMaterial(Color.grey);
 			}
 		}
 
@@ -194,53 +247,116 @@ namespace RTSToolkitFree
 
 		public void Search()
 		{
-			if (isReady)
+			if (isMovable == true && isManual == false && IsMoving == false)
 			{
-				Unit tmpTarget = BattleSystem.active.FindNearest(nation, transform.position);
-
-				if (tmpTarget != null &&
-					tmpTarget.IsDead == false &&
-					tmpTarget.attackers.Count < tmpTarget.maxAttackers
-				)
+				Unit unit = BattleSystem.active.FindNearestUnit(nation, transform.position, AllowSearch);
+				if (unit != null)
 				{
-					tmpTarget.attackers.Add(this);
-					target = tmpTarget;
-					isReady = false;
-					isApproaching = true;
+					unit.attackers.Add(Id);
+					target = unit;
+					IsMoving = true;
+				}
+			}
+			for (int i = 0; i < attackers.Count; i++)
+			{ 
+				if (BattleSystem.active.UnitIndex.ContainsKey(attackers[i]) == false)
+				{ 
+					attackers.Remove(attackers[i]);
 				}
 			}
 		}
 
+		public bool AllowSearch(int argIndex)
+		{ 
+			bool ret = false;
+			if (argIndex >= 0)
+			{
+				Unit tmpTarget = BattleSystem.active.targets[nation][argIndex];
+				if (tmpTarget.IsDead == false && tmpTarget.attackers.Count < tmpTarget.maxAttackers)
+				{
+					ret = true;
+				}
+			}
+			return ret;
+		}
+
+
+		float oldTargetDistanceSq;
+
 		public void Retarget()
 		{
-			if (isApproaching && target != null)
+			if (IsMoving && target != null)
 			{
-				Unit tmpTarget = BattleSystem.active.FindNearest(nation, transform.position);
-
-				if (tmpTarget != null &&
-					tmpTarget.IsDead == false &&
-					tmpTarget.attackers.Count < tmpTarget.maxAttackers
-				)
+				oldTargetDistanceSq = Vector3.Distance(target.transform.position, transform.position);
+				Unit unit = BattleSystem.active.FindNearestUnit(nation, transform.position, AllowRetarget);
+				if (unit != null)
 				{
-					float oldTargetDistanceSq = (target.transform.position - transform.position).sqrMagnitude;
-					float newTargetDistanceSq = (tmpTarget.transform.position - transform.position).sqrMagnitude;
+					float newTargetDistanceSq = Vector3.Distance(unit.transform.position, transform.position);
 
-					if (newTargetDistanceSq < oldTargetDistanceSq)
+					// Проверить, может есть атакующие, которые дальше
+					if (unit.attackers.Count >= unit.maxAttackers)
 					{
-						target.attackers.Remove(this);
+						int bestIndex = -1;
+						int bestId = -1;
+						float bestD = 0;
+						for (int j = 0; j < unit.attackers.Count; j++)
+						{
+							if (BattleSystem.active.UnitIndex.ContainsKey(unit.attackers[j]))
+							{
+								Unit tmpUnit = BattleSystem.active.UnitIndex[unit.attackers[j]];
 
-						tmpTarget.attackers.Add(this);
-						target = tmpTarget;
-						isReady = false;
-						isApproaching = true;
+								float d = Vector3.Distance(unit.transform.position, tmpUnit.transform.position);
+								if (d > newTargetDistanceSq && d > bestD)
+								{
+									bestD = d;
+									bestId = tmpUnit.Id;
+									bestIndex = j;
+								}
+							}
+						}
+						if (bestId != -1)
+						{
+							Unit removeUnit = BattleSystem.active.UnitIndex[unit.attackers[bestIndex]];
+							removeUnit.target = null;
+							removeUnit.IsMoving = false;
+							unit.attackers.RemoveAt(bestIndex);
+						}
+					}
+
+					if (unit.attackers.Count < unit.maxAttackers)
+					{
+						target.attackers.Remove(Id); // Удалить юнит из атакующих старой цели
+						unit.attackers.Add(Id); // Юнит переключить на новую цель
+
+						target = unit;
+						IsMoving = true;
 					}
 				}
 			}
 		}
 
+		public bool AllowRetarget(int argIndex)
+		{
+			bool ret = false;
+			if (argIndex >= 0)
+			{
+				Unit tmpTarget = BattleSystem.active.targets[nation][argIndex];
+				if (tmpTarget.IsDead == false && tmpTarget.attackers.Contains(Id) == false)
+				{
+					float newTargetDistanceSq = Vector3.Distance(tmpTarget.transform.position, transform.position);
+					if (newTargetDistanceSq < oldTargetDistanceSq)
+					{
+						ret = true;
+					}
+				}
+			}
+			return ret;
+		}
+
+
 		public void Approach()
 		{
-			if (isApproaching && target != null)
+			if (IsMoving && target != null)
 			{
 				if (target.IsApproachable == true)
 				{
@@ -249,21 +365,20 @@ namespace RTSToolkitFree
 
 					// Если атакующий не может подойти к своей цели, увеличивается счетчик failedR
 					// и если счетчик становится больше critFailedR, то цель скидывается и запрашивается новая цель
-					if (prevTargetD <= newTargetD)
+					if (prevTargetD < newTargetD)
 					{
 						failedR = failedR + 1;
 						if (failedR > critFailedR)
 						{
-							isApproaching = false;
-							isReady = true;
+							IsMoving = false;
 							failedR = 0;
 
 							if (target != null)
 							{
-								target.attackers.Remove(this);
+								target.attackers.Remove(Id);
 								target = null;
 							}
-							ChangeMaterial(Color.yellow);
+							//ChangeMaterial(Color.yellow);
 						}
 					}
 					else
@@ -277,14 +392,12 @@ namespace RTSToolkitFree
 							agent.SetDestination(transform.position);
 
 							// pre-setting for attacking
-							isApproaching = false;
-							isAttacking = true;
-
-							ChangeMaterial(Color.red);
+							IsMoving = false;
+							IsAttacking = true;
 						}
 						else
 						{
-							ChangeMaterial(Color.green);
+							//ChangeMaterial(Color.green);
 
 							// начинаем двигаться
 							if (isMovable)
@@ -307,10 +420,9 @@ namespace RTSToolkitFree
 					target = null;
 					agent.SetDestination(transform.position);
 
-					isApproaching = false;
-					isReady = true;
+					IsMoving = false;
 
-					ChangeMaterial(Color.yellow);
+					//ChangeMaterial(Color.yellow);
 				}
 			}
 
@@ -318,32 +430,38 @@ namespace RTSToolkitFree
 
 		public void Attack()
 		{
-			if (isAttacking && target != null)
+			if (isAttacking)
 			{
-				agent.stoppingDistance = agent.radius / (transform.localScale.x) + target.agent.radius / (target.transform.localScale.x);
-
-				// distance between attacker and target
-
-				float rTarget = (transform.position - target.transform.position).magnitude;
-				float stoppDistance = (2.5f + transform.localScale.x * target.transform.localScale.x * agent.stoppingDistance);
-
-				// if target moves away, resetting back to approach target phase
-
-				if (rTarget > stoppDistance)
+				if (target != null)
 				{
-					isApproaching = true;
-					isAttacking = false;
+					agent.stoppingDistance = agent.radius / (transform.localScale.x) + target.agent.radius / (target.transform.localScale.x);
+
+					// distance between attacker and target
+
+					float rTarget = (transform.position - target.transform.position).magnitude;
+					float stoppDistance = (2.5f + transform.localScale.x * target.transform.localScale.x * agent.stoppingDistance);
+
+					// if target moves away, resetting back to approach target phase
+
+					if (rTarget > stoppDistance)
+					{
+						IsMoving = true;
+						IsAttacking = false;
+					}
+					// attacker starts attacking their target	
+					else
+					{
+						// if attack passes target through target defence, cause damage to target
+						if (UnityEngine.Random.value > (strength / (strength + defence)))
+						{
+							target.Health = target.Health - 2.0f * strength * UnityEngine.Random.value;
+						}
+					}
 				}
-				// attacker starts attacking their target	
 				else
 				{
-					ChangeMaterial(Color.red);
-
-					// if attack passes target through target defence, cause damage to target
-					if (UnityEngine.Random.value > (strength / (strength + defence)))
-					{
-						target.Health = target.Health - 2.0f * strength * UnityEngine.Random.value;
-					}
+					IsAttacking = false;
+					//IsMoving = true;
 				}
 			}
 		}
@@ -351,11 +469,12 @@ namespace RTSToolkitFree
 
 		public void ChangeMaterial(Color argColor)
 		{
-			if (changeMaterial)
+			if (changeMaterial && renderer != null)
 			{
 				renderer.material.color = argColor;
 			}
 		}
+
 
 	}
 
@@ -363,4 +482,7 @@ namespace RTSToolkitFree
 	{
 		void ApplyDamage(float argDamage);
 	}
+
+
+
 }
