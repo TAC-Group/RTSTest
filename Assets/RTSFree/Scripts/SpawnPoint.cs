@@ -64,8 +64,7 @@ namespace RTSToolkitFree
 
                     unit.ChangeMaterial(Color.white);
 
-					BattleSystem.active.allUnits.Add(unit);
-					BattleSystem.active.UnitIndex.Add(unit.Id, unit);
+					BattleSystem.active.AddUnit(unit);
 				}
 
 				numberOfObjects--;

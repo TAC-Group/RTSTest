@@ -1,4 +1,5 @@
 ﻿using UnityEngine;
+using static UnityEngine.GraphicsBuffer;
 
 namespace RTSToolkitFree
 {
@@ -133,10 +134,10 @@ namespace RTSToolkitFree
                 {
                     for (int i = 0; i < BattleSystem.active.allUnits.Count; i++)
                     {
-                        Unit up = BattleSystem.active.allUnits[i];
-                        ManualControl manualControl = up.GetComponent<ManualControl>();
+                        Unit unit = BattleSystem.active.allUnits[i];
+                        ManualControl manualControl = unit.GetComponent<ManualControl>();
 
-                        if (manualControl != null && manualControl.IsSelected && up.nation == BattleSystem.active.playerNation)
+                        if (manualControl != null && manualControl.IsSelected && unit.nation == BattleSystem.active.playerNation)
                         {
                             manualControl.manualDestination = hit.point;
 
@@ -146,12 +147,11 @@ namespace RTSToolkitFree
                             }
                             manualControl.moveCoroutine = StartCoroutine(manualControl.Move());
 
-                            if (up.target != null)
+                            if (unit.targetId != -1)
                             {
-                                Unit currentTarget = up.target.GetComponent<Unit>();
-                                currentTarget.attackers.Remove(up.Id);
-                                //currentTarget.noAttackers = currentTarget.attackers.Count;
-                                up.target = null;
+								Unit target = BattleSystem.active.GetUnit(unit.targetId);
+								target.attackers.Remove(unit.Id);
+                                unit.targetId = -1;
                             }
 
                         }

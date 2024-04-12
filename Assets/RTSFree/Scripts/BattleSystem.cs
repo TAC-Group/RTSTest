@@ -19,7 +19,7 @@ namespace RTSToolkitFree
 		public int playerNation = 0;
 
 		public List<Unit> allUnits = new List<Unit>();
-		public Dictionary<int, Unit> UnitIndex = new Dictionary<int, Unit>();
+		private Dictionary<int, Unit> UnitIndex = new Dictionary<int, Unit>();
 
 		public List<List<Unit>> targets = new List<List<Unit>>();
 		public List<KDTree> targetKD = new List<KDTree>();
@@ -45,14 +45,29 @@ namespace RTSToolkitFree
 
         void Calc()
         {
-			UpdateRate(SearchPhase, "Search", 1.0f);
-			UpdateRate(RetargetPhase, "Retarget", 1.0f);
-			UpdateRate(ApproachPhase, "Approach", 1.0f);
-			UpdateRate(AttackPhase, "Attack", 1.0f);
+			UpdateRate(SearchPhase, "Search", 0.1f);
+			UpdateRate(RetargetPhase, "Retarget", 0.1f);
+			UpdateRate(ApproachPhase, "Approach", 0.1f);
+			UpdateRate(AttackPhase, "Attack", 0.1f);
 
             DeathPhase();
         }
 
+
+		public void AddUnit(Unit argUnit)
+		{
+			allUnits.Add(argUnit);
+			UnitIndex.Add(argUnit.Id, argUnit);
+		}
+
+		public Unit GetUnit(int argId)
+		{
+			if (UnitIndex.ContainsKey(argId))
+			{ 
+				return UnitIndex[argId];
+			}
+			else { return null; }
+		}
 
         public IEnumerator RefreshDistanceTree()
         {
@@ -99,7 +114,7 @@ namespace RTSToolkitFree
                 rIndex.Add(phaseName, 0);
             }
 
-			int nToLoop = (int)(allUnits.Count * rate);
+			int nToLoop = (int)(allUnits.Count * rate) + 1;
 			for (int i = 0; i < nToLoop; i++)
 			{
 				rIndex[phaseName]++;
@@ -141,6 +156,8 @@ namespace RTSToolkitFree
 			{
 				if (allUnits[i].IsDead)
 				{
+
+
 					UnitIndex.Remove(allUnits[i].Id);
 
 					allUnits.RemoveAt(i);
@@ -261,7 +278,7 @@ namespace RTSToolkitFree
 			{
 				if (UnitIndex.ContainsKey(argUnit.attackers[i]))
 				{
-					if (argUnit.target != null && UnitIndex[argUnit.attackers[i]].Id == argUnit.target.Id)
+					if (argUnit.targetId != -1 && UnitIndex[argUnit.attackers[i]].Id == argUnit.targetId)
 					{
 						UnityEditor.Handles.color = Color.black;
 					}

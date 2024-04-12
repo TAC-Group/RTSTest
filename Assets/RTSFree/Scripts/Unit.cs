@@ -80,9 +80,9 @@ namespace RTSToolkitFree
 		/// </summary>
 		private bool isDying = false;
 
-		public Unit target = null;
+		public int targetId = -1;
+
 		public List<int> attackers = new List<int>();
-		public List<int> oldAttackers = new List<int>();
 
 		//public int noAttackers = 0;
 		public int maxAttackers = 3;
@@ -167,9 +167,9 @@ namespace RTSToolkitFree
 		public IEnumerator DelayDeath(float argTime)
 		{
 			isMovable = false;
-			IsMoving = false;
-			IsAttacking = false;
-			target = null;
+
+			AttackEnd();
+			ResetTarget();
 
 			// unselecting deads	
 			ManualControl manualControl = GetComponent<ManualControl>();
@@ -208,9 +208,9 @@ namespace RTSToolkitFree
 		public void ResetSearching()
 		{
 			isManual = false;
-			IsMoving = false;
-			IsAttacking = false;
-			target = null;
+
+			AttackEnd();
+			ResetTarget();
 
 			if (agent.enabled)
 			{
@@ -225,9 +225,9 @@ namespace RTSToolkitFree
 			if (isMovable)
 			{
 				isManual = true;
-				IsMoving = false;
-				IsAttacking = false;
-				target = null;
+
+				AttackEnd();
+				ResetTarget();
 
 				if (agent.enabled)
 				{
@@ -245,21 +245,73 @@ namespace RTSToolkitFree
 		}
 
 
+		public void SetTarget(int argTargetId)
+		{
+			if (argTargetId != -1)
+			{
+				Unit target = BattleSystem.active.GetUnit(argTargetId);
+				target.attackers.Add(Id);
+			}
+
+			targetId = argTargetId;
+			IsMoving = true;
+		}
+
+		public void ResetTarget()
+		{
+			if (targetId != -1)
+			{
+				Unit target = BattleSystem.active.GetUnit(targetId);
+				if (target != null)
+				{
+					target.attackers.Remove(Id);
+				}
+			}
+			targetId = -1;
+			IsMoving = false;
+		}
+
+		/// <summary>
+		/// Начать атаку, цель есть и находится близко
+		/// </summary>
+		public void AttackBegin()
+		{
+			IsMoving = false;
+			IsAttacking = true;
+		}
+
+		/// <summary>
+		/// Аттака закончена, цели нет
+		/// </summary>
+		public void AttackEnd()
+		{
+			IsAttacking = false;
+			IsMoving = false;
+		}
+
+		/// <summary>
+		/// Догнать, если нельзя атаковать, не меняя цели
+		/// </summary>
+		public void AttackCatchUp()
+		{
+			IsAttacking = false;
+			IsMoving = true;
+		}
+
 		public void Search()
 		{
-			if (isMovable == true && isManual == false && IsMoving == false)
+			if (isMovable == true && isManual == false && IsMoving == false && targetId == -1)
 			{
 				Unit unit = BattleSystem.active.FindNearestUnit(nation, transform.position, AllowSearch);
 				if (unit != null)
 				{
-					unit.attackers.Add(Id);
-					target = unit;
-					IsMoving = true;
+					SetTarget(unit.Id);
 				}
 			}
+			// Удаление мертвых атакующих
 			for (int i = 0; i < attackers.Count; i++)
 			{ 
-				if (BattleSystem.active.UnitIndex.ContainsKey(attackers[i]) == false)
+				if (BattleSystem.active.GetUnit(attackers[i]) == null)
 				{ 
 					attackers.Remove(attackers[i]);
 				}
@@ -272,7 +324,8 @@ namespace RTSToolkitFree
 			if (argIndex >= 0)
 			{
 				Unit tmpTarget = BattleSystem.active.targets[nation][argIndex];
-				if (tmpTarget.IsDead == false && tmpTarget.attackers.Count < tmpTarget.maxAttackers)
+				if (tmpTarget.IsDead == false && tmpTarget.attackers.Count < tmpTarget.maxAttackers
+						&& tmpTarget.attackers.Contains(Id) == false)
 				{
 					ret = true;
 				}
@@ -285,52 +338,59 @@ namespace RTSToolkitFree
 
 		public void Retarget()
 		{
-			if (IsMoving && target != null)
+			if (IsMoving && targetId != -1)
 			{
-				oldTargetDistanceSq = Vector3.Distance(target.transform.position, transform.position);
-				Unit unit = BattleSystem.active.FindNearestUnit(nation, transform.position, AllowRetarget);
-				if (unit != null)
+				Unit target = BattleSystem.active.GetUnit(targetId);
+				if (target != null)
 				{
-					float newTargetDistanceSq = Vector3.Distance(unit.transform.position, transform.position);
 
-					// Проверить, может есть атакующие, которые дальше
-					if (unit.attackers.Count >= unit.maxAttackers)
+					oldTargetDistanceSq = Vector3.Distance(target.transform.position, transform.position);
+					Unit unit = BattleSystem.active.FindNearestUnit(nation, transform.position, AllowRetarget);
+					if (unit != null)
 					{
-						int bestIndex = -1;
-						int bestId = -1;
-						float bestD = 0;
-						for (int j = 0; j < unit.attackers.Count; j++)
-						{
-							if (BattleSystem.active.UnitIndex.ContainsKey(unit.attackers[j]))
-							{
-								Unit tmpUnit = BattleSystem.active.UnitIndex[unit.attackers[j]];
+						float newTargetDistanceSq = Vector3.Distance(unit.transform.position, transform.position);
 
-								float d = Vector3.Distance(unit.transform.position, tmpUnit.transform.position);
-								if (d > newTargetDistanceSq && d > bestD)
+						// Проверить, может есть атакующие, которые дальше
+						if (unit.attackers.Count >= unit.maxAttackers)
+						{
+							int bestIndex = -1;
+							int bestId = -1;
+							float bestD = 0;
+							for (int j = 0; j < unit.attackers.Count; j++)
+							{
+								Unit tmpUnit = BattleSystem.active.GetUnit(unit.attackers[j]);
+								if (tmpUnit != null)
 								{
-									bestD = d;
-									bestId = tmpUnit.Id;
-									bestIndex = j;
+
+									float d = Vector3.Distance(unit.transform.position, tmpUnit.transform.position);
+									if (d > newTargetDistanceSq && d > bestD)
+									{
+										bestD = d;
+										bestId = tmpUnit.Id;
+										bestIndex = j;
+									}
 								}
 							}
+							if (bestId != -1)
+							{
+								Unit removeUnit = BattleSystem.active.GetUnit(unit.attackers[bestIndex]);
+								removeUnit.targetId = -1;
+								removeUnit.IsMoving = false;
+								unit.attackers.RemoveAt(bestIndex);
+							}
 						}
-						if (bestId != -1)
+
+						if (unit.attackers.Count < unit.maxAttackers)
 						{
-							Unit removeUnit = BattleSystem.active.UnitIndex[unit.attackers[bestIndex]];
-							removeUnit.target = null;
-							removeUnit.IsMoving = false;
-							unit.attackers.RemoveAt(bestIndex);
+							target.attackers.Remove(Id); // Удалить юнит из атакующих старой цели
+
+							SetTarget(unit.Id);
 						}
 					}
-
-					if (unit.attackers.Count < unit.maxAttackers)
-					{
-						target.attackers.Remove(Id); // Удалить юнит из атакующих старой цели
-						unit.attackers.Add(Id); // Юнит переключить на новую цель
-
-						target = unit;
-						IsMoving = true;
-					}
+				}
+				else
+				{
+					ResetTarget();
 				}
 			}
 		}
@@ -356,8 +416,10 @@ namespace RTSToolkitFree
 
 		public void Approach()
 		{
-			if (IsMoving && target != null)
+			if (IsMoving == true && targetId != -1)
 			{
+				Unit target = BattleSystem.active.GetUnit(targetId);
+
 				if (target.IsApproachable == true)
 				{
 					// дистанция между юнитом и целью
@@ -370,15 +432,8 @@ namespace RTSToolkitFree
 						failedR = failedR + 1;
 						if (failedR > critFailedR)
 						{
-							IsMoving = false;
 							failedR = 0;
-
-							if (target != null)
-							{
-								target.attackers.Remove(Id);
-								target = null;
-							}
-							//ChangeMaterial(Color.yellow);
+							ResetTarget();
 						}
 					}
 					else
@@ -392,8 +447,7 @@ namespace RTSToolkitFree
 							agent.SetDestination(transform.position);
 
 							// pre-setting for attacking
-							IsMoving = false;
-							IsAttacking = true;
+							AttackBegin();
 						}
 						else
 						{
@@ -417,12 +471,9 @@ namespace RTSToolkitFree
 				// condition for non approachable targets	
 				else
 				{
-					target = null;
 					agent.SetDestination(transform.position);
 
-					IsMoving = false;
-
-					//ChangeMaterial(Color.yellow);
+					ResetTarget();
 				}
 			}
 
@@ -432,36 +483,44 @@ namespace RTSToolkitFree
 		{
 			if (isAttacking)
 			{
-				if (target != null)
+				if (targetId != -1)
 				{
-					agent.stoppingDistance = agent.radius / (transform.localScale.x) + target.agent.radius / (target.transform.localScale.x);
+					Unit target = BattleSystem.active.GetUnit(targetId);
 
-					// distance between attacker and target
-
-					float rTarget = (transform.position - target.transform.position).magnitude;
-					float stoppDistance = (2.5f + transform.localScale.x * target.transform.localScale.x * agent.stoppingDistance);
-
-					// if target moves away, resetting back to approach target phase
-
-					if (rTarget > stoppDistance)
+					if (target != null)
 					{
-						IsMoving = true;
-						IsAttacking = false;
-					}
-					// attacker starts attacking their target	
-					else
-					{
-						// if attack passes target through target defence, cause damage to target
-						if (UnityEngine.Random.value > (strength / (strength + defence)))
+						agent.stoppingDistance = agent.radius / (transform.localScale.x) + target.agent.radius / (target.transform.localScale.x);
+
+						// distance between attacker and target
+
+						float rTarget = (transform.position - target.transform.position).magnitude;
+						float stoppDistance = (2.5f + transform.localScale.x * target.transform.localScale.x * agent.stoppingDistance);
+
+						// if target moves away, resetting back to approach target phase
+
+						if (rTarget > stoppDistance)
 						{
-							target.Health = target.Health - 2.0f * strength * UnityEngine.Random.value;
+							AttackCatchUp();
 						}
+						// attacker starts attacking their target	
+						else
+						{
+							// if attack passes target through target defence, cause damage to target
+							if (UnityEngine.Random.value > (strength / (strength + defence)))
+							{
+								target.Health = target.Health - 2.0f * strength * UnityEngine.Random.value;
+							}
+						}
+					}
+					else
+					{ 
+						AttackEnd();
+						ResetTarget();
 					}
 				}
 				else
 				{
-					IsAttacking = false;
-					//IsMoving = true;
+					AttackEnd();
 				}
 			}
 		}
