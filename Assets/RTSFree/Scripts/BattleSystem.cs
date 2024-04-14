@@ -36,9 +36,10 @@ namespace RTSToolkitFree
         {
             UnityEngine.AI.NavMesh.pathfindingIterationsPerFrame = 10000;
             StartCoroutine(RefreshDistanceTree());
-        }
+			globalTime.Start();
+		}
 
-        void Update()
+		void Update()
         {
             Calc();
         }
@@ -150,10 +151,21 @@ namespace RTSToolkitFree
 		{
 			allUnits[unitIndex].Attack();
 		}
+
+		static System.Diagnostics.Stopwatch globalTime = new System.Diagnostics.Stopwatch();
+		static int cube = 0;
+		static int tetra = 0;
+
 		private void DeathPhase()
 		{
+			cube = 0;
+			tetra = 0;
+
 			for (int i = 0; i < allUnits.Count; i++)
 			{
+				if (allUnits[i].nation == 0) cube++;
+				if (allUnits[i].nation == 1) tetra++;
+
 				if (allUnits[i].IsDead)
 				{
 
@@ -162,7 +174,18 @@ namespace RTSToolkitFree
 
 					allUnits.RemoveAt(i);
 				}
+
 			}
+		}
+
+		public void OnGUI()
+		{
+			GUI.Label(GUIRect(0.05f), $"Time: " + (globalTime.ElapsedMilliseconds / 1000f).ToString("F2") + " | " + cube.ToString() + " / " + tetra.ToString());
+		}
+
+		Rect GUIRect(float height)
+		{
+			return new Rect(Screen.width * 0.05f, Screen.height * height, 500f, 20f);
 		}
 
 		public Unit FindNearestUnit(int nation, Vector3 argPosition)

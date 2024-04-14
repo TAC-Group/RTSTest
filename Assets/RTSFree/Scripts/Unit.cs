@@ -4,6 +4,7 @@ using System.Collections;
 using UnityEngine.AI;
 using UnityEngine.UI;
 using UnityEngine.UIElements;
+using static UnityEngine.GraphicsBuffer;
 
 namespace RTSToolkitFree
 {
@@ -111,7 +112,9 @@ namespace RTSToolkitFree
 				}
 				if (isDying == true)
 				{
-					StartCoroutine(DelayDeath(5));
+					agent.enabled = false;
+					boxCollider.enabled = false;
+					StartCoroutine(DelayDeath(12));
 				}
 			}
 		}
@@ -144,6 +147,7 @@ namespace RTSToolkitFree
 		public int nation = 1;
 
 		private NavMeshAgent agent;
+		private BoxCollider boxCollider;
 		private Renderer renderer;
 		private StatusBar StatusBar;
 
@@ -154,6 +158,7 @@ namespace RTSToolkitFree
 		public void Init()
 		{
 			agent = GetComponent<NavMeshAgent>();
+			boxCollider = GetComponent<BoxCollider>();
 			renderer = GetComponent<Renderer>();
 			StatusBar = GetComponentInChildren<StatusBar>();
 
@@ -189,6 +194,7 @@ namespace RTSToolkitFree
 
 		public float sinkUpdateFraction = 1f;
 
+
 		public IEnumerator DelaySink()
 		{
 			ChangeMaterial(new Color((148.0f / 255.0f), (0.0f / 255.0f), (211.0f / 255.0f), 1.0f));
@@ -196,8 +202,9 @@ namespace RTSToolkitFree
 			// moving sinking object down into the ground	
 			while (transform.position.y > -1.0f)
 			{
-				float sinkSpeed = -0.01f;
-				transform.position += new Vector3(0f, sinkSpeed, 0f);
+				float sinkSpeed = -0.2f;
+				//transform.position += new Vector3(0f, sinkSpeed, 0f);
+				transform.position += new Vector3(0f, sinkSpeed * Time.deltaTime / sinkUpdateFraction, 0f);
 				yield return new WaitForSeconds(0.1f);
 			}
 
@@ -255,6 +262,7 @@ namespace RTSToolkitFree
 
 			targetId = argTargetId;
 			IsMoving = true;
+			failedR = 0;
 		}
 
 		public void ResetTarget()
@@ -325,7 +333,7 @@ namespace RTSToolkitFree
 			{
 				Unit tmpTarget = BattleSystem.active.targets[nation][argIndex];
 				if (tmpTarget.IsDead == false && tmpTarget.attackers.Count < tmpTarget.maxAttackers
-						&& tmpTarget.attackers.Contains(Id) == false)
+						/*&& tmpTarget.attackers.Contains(Id) == false*/)
 				{
 					ret = true;
 				}
@@ -335,6 +343,37 @@ namespace RTSToolkitFree
 
 
 		float oldTargetDistanceSq;
+
+
+		public void SwapAttackers(Unit argUnit, float newTargetDistance)
+		{
+			int bestIndex = -1;
+			int bestId = -1;
+			float bestD = 0;
+			for (int j = 0; j < argUnit.attackers.Count; j++)
+			{
+				Unit tmpUnit = BattleSystem.active.GetUnit(argUnit.attackers[j]);
+				if (tmpUnit != null)
+				{
+
+					float d = Vector3.Distance(argUnit.transform.position, tmpUnit.transform.position);
+					if (d > newTargetDistance && d > bestD)
+					{
+						bestD = d;
+						bestId = tmpUnit.Id;
+						bestIndex = j;
+					}
+				}
+			}
+			if (bestId != -1)
+			{
+				Unit removeUnit = BattleSystem.active.GetUnit(argUnit.attackers[bestIndex]);
+				removeUnit.targetId = -1;
+				removeUnit.IsMoving = false;
+				argUnit.attackers.RemoveAt(bestIndex);
+			}
+		}
+
 
 		public void Retarget()
 		{
@@ -348,36 +387,11 @@ namespace RTSToolkitFree
 					Unit unit = BattleSystem.active.FindNearestUnit(nation, transform.position, AllowRetarget);
 					if (unit != null)
 					{
-						float newTargetDistanceSq = Vector3.Distance(unit.transform.position, transform.position);
-
 						// Проверить, может есть атакующие, которые дальше
 						if (unit.attackers.Count >= unit.maxAttackers)
 						{
-							int bestIndex = -1;
-							int bestId = -1;
-							float bestD = 0;
-							for (int j = 0; j < unit.attackers.Count; j++)
-							{
-								Unit tmpUnit = BattleSystem.active.GetUnit(unit.attackers[j]);
-								if (tmpUnit != null)
-								{
-
-									float d = Vector3.Distance(unit.transform.position, tmpUnit.transform.position);
-									if (d > newTargetDistanceSq && d > bestD)
-									{
-										bestD = d;
-										bestId = tmpUnit.Id;
-										bestIndex = j;
-									}
-								}
-							}
-							if (bestId != -1)
-							{
-								Unit removeUnit = BattleSystem.active.GetUnit(unit.attackers[bestIndex]);
-								removeUnit.targetId = -1;
-								removeUnit.IsMoving = false;
-								unit.attackers.RemoveAt(bestIndex);
-							}
+							float newTargetDistance = Vector3.Distance(unit.transform.position, transform.position);
+							SwapAttackers(unit, newTargetDistance);
 						}
 
 						if (unit.attackers.Count < unit.maxAttackers)
@@ -427,7 +441,7 @@ namespace RTSToolkitFree
 
 					// Если атакующий не может подойти к своей цели, увеличивается счетчик failedR
 					// и если счетчик становится больше critFailedR, то цель скидывается и запрашивается новая цель
-					if (prevTargetD < newTargetD)
+					if (prevTargetD <= newTargetD)
 					{
 						failedR = failedR + 1;
 						if (failedR > critFailedR)
