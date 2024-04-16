@@ -310,10 +310,32 @@ namespace RTSToolkitFree
 		{
 			if (isMovable == true && isManual == false && IsMoving == false && targetId == -1)
 			{
-				Unit unit = BattleSystem.active.FindNearestUnit(nation, transform.position, AllowSearch);
+				Unit unit = BattleSystem.active.FindNearestUnit(nation, transform.position, AllowSearchFull);
 				if (unit != null)
 				{
-					SetTarget(unit.Id);
+					// Проверить, может есть атакующие, которые дальше
+					if (unit.attackers.Count >= unit.maxAttackers)
+					{
+						float newTargetDistance = Vector3.Distance(unit.transform.position, transform.position);
+						SwapAttackers(unit, newTargetDistance);
+					}
+
+					if (unit.attackers.Count < unit.maxAttackers)
+					{
+						SetTarget(unit.Id);
+						BattleSystem.active.AddLink(Id, unit.Id);
+					}
+					else
+					{
+						Unit unit2 = BattleSystem.active.FindNearestUnit(nation, transform.position, AllowSearch);
+
+						if (unit2 != null)
+						{
+							SetTarget(unit2.Id);
+							BattleSystem.active.AddLink(Id, unit2.Id);
+						}
+
+					}
 				}
 			}
 			// Удаление мертвых атакующих
@@ -341,6 +363,20 @@ namespace RTSToolkitFree
 			return ret;
 		}
 
+		public bool AllowSearchFull(int argIndex)
+		{
+			bool ret = false;
+			if (argIndex >= 0)
+			{
+				Unit tmpTarget = BattleSystem.active.targets[nation][argIndex];
+				if (tmpTarget.IsDead == false /*&& tmpTarget.attackers.Count < tmpTarget.maxAttackers*/
+						/*&& tmpTarget.attackers.Contains(Id) == false*/)
+				{
+					ret = true;
+				}
+			}
+			return ret;
+		}
 
 		float oldTargetDistanceSq;
 
@@ -434,14 +470,14 @@ namespace RTSToolkitFree
 			{
 				Unit target = BattleSystem.active.GetUnit(targetId);
 
-				if (target.IsApproachable == true)
+				if (target != null && target.IsApproachable == true)
 				{
 					// дистанция между юнитом и целью
 					float newTargetD = (transform.position - target.transform.position).magnitude;
 
 					// Если атакующий не может подойти к своей цели, увеличивается счетчик failedR
 					// и если счетчик становится больше critFailedR, то цель скидывается и запрашивается новая цель
-					if (prevTargetD <= newTargetD)
+					if (prevTargetD < newTargetD)
 					{
 						failedR = failedR + 1;
 						if (failedR > critFailedR)

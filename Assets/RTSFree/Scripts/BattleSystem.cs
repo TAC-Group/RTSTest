@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
+using Unity.VisualScripting;
 using UnityEngine;
 using static RTSToolkitFree.KDTree;
 
@@ -24,6 +26,9 @@ namespace RTSToolkitFree
 		public List<List<Unit>> targets = new List<List<Unit>>();
 		public List<KDTree> targetKD = new List<KDTree>();
 
+		public Dictionary<string, Link> AllLink = new Dictionary<string, Link>();
+
+
 		public int randomSeed = 0;
 
         void Awake()
@@ -46,13 +51,20 @@ namespace RTSToolkitFree
 
         void Calc()
         {
-			UpdateRate(SearchPhase, "Search", 0.1f);
-			UpdateRate(RetargetPhase, "Retarget", 0.1f);
-			UpdateRate(ApproachPhase, "Approach", 0.1f);
-			UpdateRate(AttackPhase, "Attack", 0.1f);
+			UpdateRateUnit(SearchPhase, "Search", 0.1f);
+
+			//ClusterStepForAll();
+
+
+			//UpdateRateUnit(RetargetPhase, "Retarget", 0.1f);
+			UpdateRateUnit(ApproachPhase, "Approach", 0.1f);
+			UpdateRateUnit(AttackPhase, "Attack", 0.1f);
 
             DeathPhase();
-        }
+			UpdateRateLink(ClusterStepOp, "Retarget", 0.1f);
+			//UpdateRateLink(ClusterStep, "Retarget", 0.1f);
+		}
+
 
 
 		public void AddUnit(Unit argUnit)
@@ -83,7 +95,7 @@ namespace RTSToolkitFree
                     for (int j = 0; j < allUnits.Count; j++)
                     {
                         Unit up = allUnits[j];
-                        if (up.nation != i && up.isMovable == true && up.IsApproachable == true)
+                        if (up.nation != i && up.isMovable == true && up.IsApproachable == true /*&& up.attackers.Count < up.maxAttackers*/)
                         {
                             nationTargets.Add(up);
                             nationTargetPositions.Add(up.transform.position);
@@ -106,8 +118,26 @@ namespace RTSToolkitFree
 		}
 
         public delegate void Run(int unitIndex);
-        public void UpdateRate(Run run, string phaseName, float rate)
+
+
+		public void UpdateRateUnit(Run run, string phaseName, float rate)
+		{
+			UpdateRate<Unit>(run, phaseName, rate, allUnits);
+		}
+
+		private List<Link> tmpLink;
+
+		public void UpdateRateLink(Run run, string phaseName, float rate)
+		{
+			tmpLink = AllLink.Values.ToList();
+			UpdateRate<Link>(run, phaseName, rate, tmpLink);
+		}
+
+
+		public void UpdateRate<T>(Run run, string phaseName, float rate, List<T> argList)
         {
+			if (argList.Count == 0) return;
+
 			DateTime begin = DateTime.Now;
 
 			if (rIndex.ContainsKey(phaseName) == false)
@@ -115,11 +145,11 @@ namespace RTSToolkitFree
                 rIndex.Add(phaseName, 0);
             }
 
-			int nToLoop = (int)(allUnits.Count * rate) + 1;
+			int nToLoop = (int)(argList.Count * rate) + 1;
 			for (int i = 0; i < nToLoop; i++)
 			{
 				rIndex[phaseName]++;
-				if (rIndex[phaseName] >= allUnits.Count)
+				if (rIndex[phaseName] >= argList.Count)
 				{
 					rIndex[phaseName] = 0;
 				}
@@ -168,14 +198,14 @@ namespace RTSToolkitFree
 
 				if (allUnits[i].IsDead)
 				{
-
-
 					UnitIndex.Remove(allUnits[i].Id);
 
 					allUnits.RemoveAt(i);
 				}
 
 			}
+
+			DeadLinkUpdate();
 		}
 
 		public void OnGUI()
@@ -251,6 +281,251 @@ namespace RTSToolkitFree
 			return best;
 		}
 
+		public float DistanceSum = 0;
+
+
+		public void CalcDistanceSum()
+		{
+			DistanceSum = 0;
+			foreach (Link link in AllLink.Values) 
+			{
+				link.Distance = Vector3.Distance(UnitIndex[link.UnitIdFrom].transform.position,
+								UnitIndex[link.UnitIdTo].transform.position);
+				DistanceSum += link.Distance;
+			}
+		}
+
+
+		public void DeadLinkUpdate()
+		{
+			List<Link> tmpLink = AllLink.Values.ToList();
+			for (int i = 0; i < tmpLink.Count; i++)
+			{
+				string k1 = tmpLink[i].UnitIdFrom.ToString() + "-" + tmpLink[i].UnitIdTo.ToString();
+
+				Unit unitFrom = GetUnit(tmpLink[i].UnitIdFrom);
+				Unit unitTo = GetUnit(tmpLink[i].UnitIdTo);
+
+				if (unitFrom == null || unitTo == null || unitFrom.IsDead || unitTo.IsDead)
+				{
+					AllLink.Remove(k1);
+				}
+			}
+			CalcDistanceSum();
+		}
+
+
+		int currentUnitIdFrom;
+		int currentNation;
+
+		public void ClusterStepOp(int i)
+		{
+			Unit unit1From = GetUnit(tmpLink[i].UnitIdFrom);
+			Unit unit1To = GetUnit(tmpLink[i].UnitIdTo);
+
+			currentUnitIdFrom = unit1From.Id;
+			currentNation = unit1To.nation;
+
+			Unit unit2From = FindNearestUnit(unit1To.nation, unit1From.transform.position, AllowRetarget);
+
+			if (unit2From != null)
+			{
+				Unit unit2To = GetUnit(unit2From.targetId);
+				if (unit2To != null)
+				{
+
+					string k2 = unit2From.Id.ToString() + "-" + unit2To.Id.ToString();
+
+					//for (int j = i + 1; j < AllLink.Values.Count; j++)
+					{
+						//Unit unit2From = GetUnit(tmpLink[j].UnitIdFrom);
+						//Unit unit2To = GetUnit(tmpLink[j].UnitIdTo);
+
+						if (unit1From.nation == unit2From.nation && AllLink.ContainsKey(k2))
+						{
+							float oldSum = tmpLink[i].Distance + AllLink[k2].Distance;
+
+							float d1 = Vector3.Distance(unit1From.transform.position, unit2To.transform.position);
+							float d2 = Vector3.Distance(unit2From.transform.position, unit1To.transform.position);
+							float newSum = d1 + d2;
+
+							if (newSum < oldSum)
+							{
+								int tmpPointId1From = tmpLink[i].UnitIdFrom;
+								int tmpPointId1To = tmpLink[i].UnitIdTo;
+
+								int tmpPointId2From = AllLink[k2].UnitIdFrom;
+								int tmpPointId2To = AllLink[k2].UnitIdTo;
+
+								RemoveLink(tmpLink[i].UnitIdFrom, tmpLink[i].UnitIdTo);
+								RemoveLink(AllLink[k2].UnitIdFrom, AllLink[k2].UnitIdTo);
+
+								AddLink(tmpPointId1From, tmpPointId2To);
+								AddLink(tmpPointId2From, tmpPointId1To);
+
+								string kk1 = tmpPointId1From.ToString() + "-" + tmpPointId2To.ToString();
+								string kk2 = tmpPointId2From.ToString() + "-" + tmpPointId1To.ToString();
+
+
+								unit1From.ResetTarget();
+								unit1From.SetTarget(tmpPointId2To);
+
+								unit2From.ResetTarget();
+								unit2From.SetTarget(tmpPointId1To);
+
+								AllLink[kk1].Distance = d1;
+								AllLink[kk2].Distance = d2;
+
+							}
+						}
+					}
+				}
+			}
+		}
+
+		public bool AllowRetarget(int argIndex)
+		{
+			bool ret = false;
+			if (argIndex >= 0)
+			{
+				Unit tmpTarget = BattleSystem.active.targets[currentNation][argIndex];
+
+				if (tmpTarget.IsDead == false && currentUnitIdFrom != tmpTarget.Id)
+				{
+					ret = true;
+				}
+			}
+			return ret;
+		}
+
+
+		public void ClusterStep(int i)
+		{
+			Unit unit1From = GetUnit(tmpLink[i].UnitIdFrom);
+			Unit unit1To = GetUnit(tmpLink[i].UnitIdTo);
+
+			for (int j = i + 1; j < AllLink.Values.Count; j++)
+			{
+				Unit unit2From = GetUnit(tmpLink[j].UnitIdFrom);
+				Unit unit2To = GetUnit(tmpLink[j].UnitIdTo);
+
+				if (unit1From.nation == unit2From.nation)
+				{
+					float oldSum = tmpLink[i].Distance + tmpLink[j].Distance;
+
+					float d1 = Vector3.Distance(unit1From.transform.position, unit2To.transform.position);
+					float d2 = Vector3.Distance(unit2From.transform.position, unit1To.transform.position);
+					float newSum = d1 + d2;
+
+					if (newSum < oldSum)
+					{
+						RemoveLink(tmpLink[i].UnitIdFrom, tmpLink[i].UnitIdTo);
+						RemoveLink(tmpLink[j].UnitIdFrom, tmpLink[j].UnitIdTo);
+
+						int tmpPointId = tmpLink[i].UnitIdTo;
+						tmpLink[i].UnitIdTo = tmpLink[j].UnitIdTo;
+						tmpLink[j].UnitIdTo = tmpPointId;
+
+
+						unit1From.ResetTarget();
+						unit1From.SetTarget(tmpLink[i].UnitIdTo);
+
+						unit2From.ResetTarget();
+						unit2From.SetTarget(tmpLink[j].UnitIdTo);
+
+						tmpLink[i].Distance = d1;
+						tmpLink[j].Distance = d2;
+
+						AddLink(tmpLink[i].UnitIdFrom, tmpLink[i].UnitIdTo);
+						AddLink(tmpLink[j].UnitIdFrom, tmpLink[j].UnitIdTo);
+					}
+				}
+			}
+		}
+
+		public void ClusterStepForAll()
+		{
+			List<Link> tmpLink = AllLink.Values.ToList();
+			for (int i = 0; i < tmpLink.Count; i++)
+			{
+				Unit unit1From = GetUnit(tmpLink[i].UnitIdFrom);
+				Unit unit1To = GetUnit(tmpLink[i].UnitIdTo);
+
+				for (int j = i + 1; j < AllLink.Values.Count; j++)
+				{
+					Unit unit2From = GetUnit(tmpLink[j].UnitIdFrom);
+					Unit unit2To = GetUnit(tmpLink[j].UnitIdTo);
+
+					if (unit1From.nation == unit2From.nation)
+					{
+						float oldSum = tmpLink[i].Distance + tmpLink[j].Distance;
+
+						float d1 = Vector3.Distance(unit1From.transform.position, unit2To.transform.position);
+						float d2 = Vector3.Distance(unit2From.transform.position, unit1To.transform.position);
+						float newSum = d1 + d2;
+
+						if (newSum < oldSum)
+						{
+							RemoveLink(tmpLink[i].UnitIdFrom, tmpLink[i].UnitIdTo);
+							RemoveLink(tmpLink[j].UnitIdFrom, tmpLink[j].UnitIdTo);
+
+							int tmpPointId = tmpLink[i].UnitIdTo;
+							tmpLink[i].UnitIdTo = tmpLink[j].UnitIdTo;
+							tmpLink[j].UnitIdTo = tmpPointId;
+							
+
+							unit1From.ResetTarget();
+							unit1From.SetTarget(tmpLink[i].UnitIdTo);
+
+							unit2From.ResetTarget();
+							unit2From.SetTarget(tmpLink[j].UnitIdTo);
+
+							tmpLink[i].Distance = d1;
+							tmpLink[j].Distance = d2;
+
+							AddLink(tmpLink[i].UnitIdFrom, tmpLink[i].UnitIdTo);
+							AddLink(tmpLink[j].UnitIdFrom, tmpLink[j].UnitIdTo);
+						}
+					}
+				}
+			}
+		}
+
+
+		public void AddLink(int argUnitIdFrom, int argUnitIdTo)
+		{
+			string k1 = argUnitIdFrom.ToString() + "-" + argUnitIdTo.ToString();
+			string k2 = argUnitIdTo.ToString() + "-" + argUnitIdFrom.ToString();
+
+			if (AllLink.ContainsKey(k1) == false)
+			{
+				AllLink.Add(k1, new Link(argUnitIdFrom, argUnitIdTo));
+			}
+
+			if (AllLink.ContainsKey(k1) == true && AllLink.ContainsKey(k2) == true)
+			{
+				AllLink[k1].TwoDirection = true;
+				AllLink[k2].TwoDirection = true;
+			}
+		}
+
+		public void RemoveLink(int argUnitIdFrom, int argUnitIdTo)
+		{
+			string k1 = argUnitIdFrom.ToString() + "-" + argUnitIdTo.ToString();
+			string k2 = argUnitIdTo.ToString() + "-" + argUnitIdFrom.ToString();
+
+			if (AllLink.ContainsKey(k1) == true && AllLink.ContainsKey(k2) == true)
+			{
+				AllLink[k1].TwoDirection = false;
+				AllLink[k2].TwoDirection = false;
+			}
+
+			if (AllLink.ContainsKey(k1) == true)
+			{
+				AllLink.Remove(k1);
+			}
+		}
+
 
 #if UNITY_EDITOR
 		public void OnDrawGizmos()
@@ -262,6 +537,8 @@ namespace RTSToolkitFree
 					DrawAttackers(allUnits[i]);
 				}
 			}
+
+			//DrawLink();
 		}
 
 		public void DrawAttackers(Unit argUnit)
@@ -314,8 +591,67 @@ namespace RTSToolkitFree
 				}
 			}
 		}
+
+		public void DrawLink()
+		{
+			Color color = Color.grey;
+
+			Dictionary<string, int> l = new Dictionary<string, int>();
+			for (int i = 0; i < AllLink.Values.Count; i++)
+
+			foreach (Link link in AllLink.Values)
+			{
+				Unit unitFrom = GetUnit(link.UnitIdFrom);
+				Unit unitTo = GetUnit(link.UnitIdTo);
+
+				if (unitFrom != null & unitTo != null)
+				{
+					string d1 = unitFrom.Id.ToString() + "-" + unitTo.Id.ToString();
+
+					if (AllLink.ContainsKey(d1) && AllLink[d1].TwoDirection == true)
+					{
+						color = Color.black;
+					}
+					else
+					{
+						if (unitFrom.nation == 0)
+						{
+							color = Color.red;
+						}
+						else if (unitFrom.nation == 1)
+						{
+							color = Color.blue;
+						}
+					}
+
+					UnityEditor.Handles.color = color;
+
+					UnityEditor.Handles.DrawLine(unitFrom.transform.position, unitTo.transform.position);
+				}
+			}
+		}
+
+
 #endif
 
 
 	}
+
+
+
+	public class Link
+	{
+		public bool TwoDirection = false;
+
+		public int UnitIdFrom;
+		public int UnitIdTo;
+		public float Distance;
+
+		public Link(int argUnitIdFrom, int argUnitIdTo)
+		{
+			UnitIdFrom = argUnitIdFrom;
+			UnitIdTo = argUnitIdTo;
+		}
+	}
+
 }
