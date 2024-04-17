@@ -87,7 +87,7 @@ namespace RTSToolkitFree
                             Unit unit = up.GetComponent<Unit>();
 
                             if (
-                                unit.nation == BattleSystem.active.playerNation &&
+                                unit.EnemyNation == BattleSystem.active.playerNation &&
                                 unit.isMovable &&
                                 unit.Health > 0f
                             )
@@ -137,7 +137,7 @@ namespace RTSToolkitFree
                         Unit unit = BattleSystem.active.allUnits[i];
                         ManualControl manualControl = unit.GetComponent<ManualControl>();
 
-                        if (manualControl != null && manualControl.IsSelected && unit.nation == BattleSystem.active.playerNation)
+                        if (manualControl != null && manualControl.IsSelected && unit.EnemyNation == BattleSystem.active.playerNation)
                         {
                             manualControl.manualDestination = hit.point;
 
@@ -149,8 +149,8 @@ namespace RTSToolkitFree
 
                             if (unit.targetId != -1)
                             {
-								Unit target = BattleSystem.active.GetUnit(unit.targetId);
-								target.attackers.Remove(unit.Id);
+								//Unit target = BattleSystem.active.GetUnit(unit.targetId);
+								//target.attackers.Remove(unit.Id);
                                 unit.targetId = -1;
                             }
 

@@ -144,7 +144,8 @@ namespace RTSToolkitFree
 
 		[HideInInspector] public bool changeMaterial = true;
 
-		public int nation = 1;
+		public int MyNation = 0;
+		public int EnemyNation = 1;
 
 		private NavMeshAgent agent;
 		private BoxCollider boxCollider;
@@ -310,7 +311,7 @@ namespace RTSToolkitFree
 		{
 			if (isMovable == true && isManual == false && IsMoving == false && targetId == -1)
 			{
-				Unit unit = BattleSystem.active.FindNearestUnit(nation, transform.position, AllowSearchFull);
+				Unit unit = BattleSystem.active.FindNearestUnit(EnemyNation, transform.position, AllowSearchFull);
 				if (unit != null)
 				{
 					// Проверить, может есть атакующие, которые дальше
@@ -323,16 +324,14 @@ namespace RTSToolkitFree
 					if (unit.attackers.Count < unit.maxAttackers)
 					{
 						SetTarget(unit.Id);
-						BattleSystem.active.AddLink(Id, unit.Id);
 					}
 					else
 					{
-						Unit unit2 = BattleSystem.active.FindNearestUnit(nation, transform.position, AllowSearch);
+						Unit unit2 = BattleSystem.active.FindNearestUnit(EnemyNation, transform.position, AllowSearch);
 
 						if (unit2 != null)
 						{
 							SetTarget(unit2.Id);
-							BattleSystem.active.AddLink(Id, unit2.Id);
 						}
 
 					}
@@ -353,9 +352,8 @@ namespace RTSToolkitFree
 			bool ret = false;
 			if (argIndex >= 0)
 			{
-				Unit tmpTarget = BattleSystem.active.targets[nation][argIndex];
-				if (tmpTarget.IsDead == false && tmpTarget.attackers.Count < tmpTarget.maxAttackers
-						/*&& tmpTarget.attackers.Contains(Id) == false*/)
+				Unit tmpTarget = BattleSystem.active.targets[EnemyNation][argIndex];
+				if (tmpTarget.IsDead == false && tmpTarget.attackers.Count < tmpTarget.maxAttackers)
 				{
 					ret = true;
 				}
@@ -368,18 +366,14 @@ namespace RTSToolkitFree
 			bool ret = false;
 			if (argIndex >= 0)
 			{
-				Unit tmpTarget = BattleSystem.active.targets[nation][argIndex];
-				if (tmpTarget.IsDead == false /*&& tmpTarget.attackers.Count < tmpTarget.maxAttackers*/
-						/*&& tmpTarget.attackers.Contains(Id) == false*/)
+				Unit tmpTarget = BattleSystem.active.targets[EnemyNation][argIndex];
+				if (tmpTarget.IsDead == false)
 				{
 					ret = true;
 				}
 			}
 			return ret;
 		}
-
-		float oldTargetDistanceSq;
-
 
 		public void SwapAttackers(Unit argUnit, float newTargetDistance)
 		{
@@ -411,36 +405,40 @@ namespace RTSToolkitFree
 		}
 
 
-		public void Retarget()
+		public void ClusterRetarget()
 		{
-			if (IsMoving && targetId != -1)
+			Unit unit1To = BattleSystem.active.GetUnit(this.targetId);
+
+			if (unit1To != null)
 			{
-				Unit target = BattleSystem.active.GetUnit(targetId);
-				if (target != null)
+				Unit unit2From = BattleSystem.active.FindNearestUnit(MyNation, transform.position, AllowRetarget);
+
+				if (unit2From != null)
 				{
-
-					oldTargetDistanceSq = Vector3.Distance(target.transform.position, transform.position);
-					Unit unit = BattleSystem.active.FindNearestUnit(nation, transform.position, AllowRetarget);
-					if (unit != null)
+					Unit unit2To = BattleSystem.active.GetUnit(unit2From.targetId);
+					if (unit2To != null)
 					{
-						// Проверить, может есть атакующие, которые дальше
-						if (unit.attackers.Count >= unit.maxAttackers)
+						if (EnemyNation == unit2From.EnemyNation)
 						{
-							float newTargetDistance = Vector3.Distance(unit.transform.position, transform.position);
-							SwapAttackers(unit, newTargetDistance);
-						}
+							float d1Old = Vector3.Distance(transform.position, unit1To.transform.position);
+							float d2Old = Vector3.Distance(unit2From.transform.position, unit2To.transform.position);
 
-						if (unit.attackers.Count < unit.maxAttackers)
-						{
-							target.attackers.Remove(Id); // Удалить юнит из атакующих старой цели
+							float oldSum = d1Old + d2Old;
 
-							SetTarget(unit.Id);
+							float d1 = Vector3.Distance(transform.position, unit2To.transform.position);
+							float d2 = Vector3.Distance(unit2From.transform.position, unit1To.transform.position);
+							float newSum = d1 + d2;
+
+							if (newSum < oldSum)
+							{
+								ResetTarget();
+								SetTarget(unit2To.Id);
+
+								unit2From.ResetTarget();
+								unit2From.SetTarget(unit1To.Id);
+							}
 						}
 					}
-				}
-				else
-				{
-					ResetTarget();
 				}
 			}
 		}
@@ -450,18 +448,15 @@ namespace RTSToolkitFree
 			bool ret = false;
 			if (argIndex >= 0)
 			{
-				Unit tmpTarget = BattleSystem.active.targets[nation][argIndex];
-				if (tmpTarget.IsDead == false && tmpTarget.attackers.Contains(Id) == false)
+				Unit tmpTarget = BattleSystem.active.targets[MyNation][argIndex];
+				if (tmpTarget.IsDead == false)
 				{
-					float newTargetDistanceSq = Vector3.Distance(tmpTarget.transform.position, transform.position);
-					if (newTargetDistanceSq < oldTargetDistanceSq)
-					{
-						ret = true;
-					}
+					ret = true;
 				}
 			}
 			return ret;
 		}
+
 
 
 		public void Approach()

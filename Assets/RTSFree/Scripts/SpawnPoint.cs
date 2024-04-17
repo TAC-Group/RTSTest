@@ -52,7 +52,7 @@ namespace RTSToolkitFree
                 Unit unit = instance.GetComponent<Unit>();
                 if (unit != null)
                 {
-                    if(unit.nation >= BattleSystem.active.numberNations)
+                    if(unit.EnemyNation >= BattleSystem.active.numberNations)
                     {
                         BattleSystem.active.AddNation();
                     }
