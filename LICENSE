@@ -1,3 +1,7 @@
+List of libraries that are protected by copyright and which can be used exclusively for educational purposes:
+* TacShootSim.dll
+
+
 With the exception of libraries starting with the name "Tac..." and 
 source files where another license is explicitly specified, 
 all other files are subject to the following free license:
@@ -24,5 +28,4 @@ IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
 OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
-
 

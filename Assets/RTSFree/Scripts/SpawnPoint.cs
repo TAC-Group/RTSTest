@@ -14,9 +14,18 @@ namespace RTSToolkitFree
         public bool randomizeRotation = true;
         public Vector3 Offset;
 
+        public int Nation;
+        SpawnWeapon SpawnWeapon;
+
 
         void Start()
         {
+            SpawnWeapon = World.GetSpawnWeapon(Nation);
+            for (int i = 0; i < SpawnWeapon.Assortment.Count; i++)
+            {
+                SpawnWeapon.Assortment[i].LeftCount = SpawnWeapon.Assortment[i].MaxCount;
+			}
+
 		 	StartCoroutine(Spawn());
 		}
 
@@ -26,7 +35,7 @@ namespace RTSToolkitFree
             while(numberOfObjects > 0)
             {
 
-                Unit spawnPointUp = GetComponent<Unit>();
+                /*Unit spawnPointUp = GetComponent<Unit>();
                 if(spawnPointUp != null)
                 {
                     if(spawnPointUp.IsDead)
@@ -34,7 +43,7 @@ namespace RTSToolkitFree
                         numberOfObjects = 0;
                         break;
                     }
-                }
+                }*/
 
                 Quaternion rotation = transform.rotation;
                 if (randomizeRotation)
@@ -58,11 +67,10 @@ namespace RTSToolkitFree
                     }
 
                     unit.Init();
-
 					unit.Id = World.GetId();
-
-
                     unit.ChangeMaterial(Color.white);
+
+                    SpawnWeapon.AddWeapon(unit.WeaponPoint.transform);
 
 					BattleSystem.active.AddUnit(unit);
 				}

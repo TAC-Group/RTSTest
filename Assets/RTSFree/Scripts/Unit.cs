@@ -5,10 +5,12 @@ using UnityEngine.AI;
 using UnityEngine.UI;
 using UnityEngine.UIElements;
 using static UnityEngine.GraphicsBuffer;
+using Tac.HealthSystem;
+using MathNet.Numerics;
 
 namespace RTSToolkitFree
 {
-	public class Unit : MonoBehaviour, IHealth
+	public class Unit : MonoBehaviour, IAgentState
 	{
 		public Text Name;
 		public int id;
@@ -24,6 +26,9 @@ namespace RTSToolkitFree
 				}
 			}
 		}
+
+		public GameObject WeaponPoint;
+
 
 		public bool isMovable = true;
 
@@ -83,6 +88,8 @@ namespace RTSToolkitFree
 
 		public int targetId = -1;
 
+		public GameObject Target;
+
 		public List<int> attackers = new List<int>();
 
 		//public int noAttackers = 0;
@@ -92,7 +99,7 @@ namespace RTSToolkitFree
 		[HideInInspector] public int failedR = 0;
 		public int critFailedR = 100;
 
-
+		/*
 		public float health = 100.0f;
 		/// <summary>
 		/// Здоровье от 0 до 100 (0 - мертв)
@@ -113,11 +120,26 @@ namespace RTSToolkitFree
 				if (isDying == true)
 				{
 					agent.enabled = false;
-					boxCollider.enabled = false;
+					//boxCollider.enabled = false;
 					StartCoroutine(DelayDeath(12));
 				}
 			}
+		}*/
+
+		public float Health
+		{
+			get { return HealthState.Health; }
 		}
+		private HealthState HealthState;
+
+		/// <summary>
+		/// Меткость
+		/// </summary>
+		private PhysicalSkill precision = new PhysicalSkill(1, 100);
+		/// <summary>
+		/// Меткость
+		/// </summary>
+		public PhysicalSkill Precision { get { return precision; } set { precision = value; } }
 
 		/// <summary>
 		/// Мертв ли
@@ -137,7 +159,7 @@ namespace RTSToolkitFree
 
 
 		public float maxHealth = 100.0f;
-		public float selfHealFactor = 10.0f;
+		//public float selfHealFactor = 10.0f;
 
 		public float strength = 10.0f;
 		public float defence = 10.0f;
@@ -148,20 +170,35 @@ namespace RTSToolkitFree
 		public int EnemyNation = 1;
 
 		private NavMeshAgent agent;
-		private BoxCollider boxCollider;
+		//private BoxCollider boxCollider;
 		private Renderer renderer;
 		private StatusBar StatusBar;
 
+		private Weapon weapon;
+
 		void Start()
 		{
+			Init();
 		}
 
 		public void Init()
 		{
+			HealthState = new HealthState(World.rnd);
+			Precision.State = 70;
+
 			agent = GetComponent<NavMeshAgent>();
-			boxCollider = GetComponent<BoxCollider>();
+			//boxCollider = GetComponent<BoxCollider>();
 			renderer = GetComponent<Renderer>();
 			StatusBar = GetComponentInChildren<StatusBar>();
+
+			weapon = GetComponentInChildren<Weapon>();
+			/*Firearm firearm = weapon as Firearm;
+			if (firearm != null)
+			{
+				float p = firearm.GetProbability(gameObject, Target);
+				float d = firearm.Fire(gameObject, Target);
+			}*/
+
 
 			if (agent != null)
 			{
@@ -203,9 +240,9 @@ namespace RTSToolkitFree
 			// moving sinking object down into the ground	
 			while (transform.position.y > -1.0f)
 			{
-				float sinkSpeed = -0.2f;
-				//transform.position += new Vector3(0f, sinkSpeed, 0f);
-				transform.position += new Vector3(0f, sinkSpeed * Time.deltaTime / sinkUpdateFraction, 0f);
+				float sinkSpeed = -0.05f;
+				transform.position += new Vector3(0f, sinkSpeed, 0f);
+				//transform.position += new Vector3(0f, sinkSpeed * Time.deltaTime / sinkUpdateFraction, 0f);
 				yield return new WaitForSeconds(0.1f);
 			}
 
@@ -246,10 +283,30 @@ namespace RTSToolkitFree
 			}
 		}
 
-
 		public void ApplyDamage(float argDamage)
 		{
-			Health -= argDamage;
+			BodyParts bodyPart = (BodyParts)World.rnd.Next(1, 11);
+			ApplyDamage(bodyPart, argDamage);
+		}
+
+		public void ApplyDamage(BodyParts argBodyPart, float argDamage)
+		{
+			HealthState.Body[argBodyPart].State -= argDamage;
+			//Health -= argDamage;
+
+			HealthState.CalcHealth();
+
+			if (HealthState.Health <= 0) { isDying = true; }
+			if (StatusBar != null)
+			{
+				StatusBar.SetHealth(HealthState.Health);
+			}
+			if (isDying == true)
+			{
+				agent.enabled = false;
+				//boxCollider.enabled = false;
+				StartCoroutine(DelayDeath(12));
+			}
 		}
 
 
@@ -461,7 +518,7 @@ namespace RTSToolkitFree
 
 		public void Approach()
 		{
-			if (IsMoving == true && targetId != -1)
+			if (IsMoving == true && targetId != -1 && weapon != null)
 			{
 				Unit target = BattleSystem.active.GetUnit(targetId);
 
@@ -483,11 +540,13 @@ namespace RTSToolkitFree
 					}
 					else
 					{
-						agent.stoppingDistance = agent.radius / (transform.localScale.x) + target.agent.radius / (target.transform.localScale.x);
-						float stoppDistance = (2f + transform.localScale.x * target.transform.localScale.x * agent.stoppingDistance);
+						//agent.stoppingDistance = agent.radius / (transform.localScale.x) + target.agent.radius / (target.transform.localScale.x);
+						//float stoppDistance = (2f + transform.localScale.x * target.transform.localScale.x * agent.stoppingDistance);
+
+						agent.stoppingDistance = weapon.WorkDistance;
 
 						// если приближающийся уже близок к своей цели
-						if (newTargetD < stoppDistance)
+						if (newTargetD < weapon.WorkDistance)
 						{
 							agent.SetDestination(transform.position);
 
@@ -534,16 +593,17 @@ namespace RTSToolkitFree
 
 					if (target != null)
 					{
-						agent.stoppingDistance = agent.radius / (transform.localScale.x) + target.agent.radius / (target.transform.localScale.x);
+						//agent.stoppingDistance = agent.radius / (transform.localScale.x) + target.agent.radius / (target.transform.localScale.x);
+						agent.stoppingDistance = weapon.WorkDistance;
 
 						// distance between attacker and target
 
-						float rTarget = (transform.position - target.transform.position).magnitude;
-						float stoppDistance = (2.5f + transform.localScale.x * target.transform.localScale.x * agent.stoppingDistance);
+						float rTarget = Vector3.Distance(transform.position, target.transform.position);
+						//float stoppDistance = (2.5f + transform.localScale.x * target.transform.localScale.x * agent.stoppingDistance);
 
 						// if target moves away, resetting back to approach target phase
 
-						if (rTarget > stoppDistance)
+						if (rTarget > weapon.WorkDistance)
 						{
 							AttackCatchUp();
 						}
@@ -551,10 +611,11 @@ namespace RTSToolkitFree
 						else
 						{
 							// if attack passes target through target defence, cause damage to target
-							if (UnityEngine.Random.value > (strength / (strength + defence)))
+							/*if (UnityEngine.Random.value > (strength / (strength + defence)))
 							{
-								target.Health = target.Health - 2.0f * strength * UnityEngine.Random.value;
-							}
+								target.ApplyDamage(2.0f * strength * UnityEngine.Random.value);
+							}*/
+							weapon.Attack(gameObject, target.gameObject);
 						}
 					}
 					else
@@ -582,9 +643,11 @@ namespace RTSToolkitFree
 
 	}
 
-	public interface IHealth
+	public interface IAgentState
 	{
+		PhysicalSkill Precision { get; set; }
 		void ApplyDamage(float argDamage);
+		void ApplyDamage(BodyParts argBodyPart, float argDamage);
 	}
 
 
