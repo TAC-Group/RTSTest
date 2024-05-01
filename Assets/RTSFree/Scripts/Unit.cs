@@ -3,10 +3,11 @@ using System.Collections.Generic;
 using System.Collections;
 using UnityEngine.AI;
 using UnityEngine.UI;
-using UnityEngine.UIElements;
-using static UnityEngine.GraphicsBuffer;
+
 using Tac.HealthSystem;
-using MathNet.Numerics;
+using Tac.Npc;
+using Tac;
+using static UnityEngine.GraphicsBuffer;
 
 namespace RTSToolkitFree
 {
@@ -27,7 +28,7 @@ namespace RTSToolkitFree
 			}
 		}
 
-		public GameObject WeaponPoint;
+		public GameObject WeaponPoint { get { return Pose.WeaponPoint; } }
 
 
 		public bool isMovable = true;
@@ -46,11 +47,11 @@ namespace RTSToolkitFree
 				isMoving = value;
 				if (isMoving == true)
 				{
-					ChangeMaterial(Color.green);
+					Pose.ChangeMaterial(Color.green);
 				}
 				else
 				{
-					ChangeMaterial(Color.yellow);
+					Pose.ChangeMaterial(Color.yellow);
 				}
 			}
 		}
@@ -70,12 +71,12 @@ namespace RTSToolkitFree
 				isAttacking = value;
 				if (isAttacking == true)
 				{
-					ChangeMaterial(Color.red);
+					Pose.ChangeMaterial(Color.red);
 				}
 				else
 				{
 					IsMoving = false;
-					ChangeMaterial(Color.yellow);
+					Pose.ChangeMaterial(Color.yellow);
 				}
 			}
 		}
@@ -89,42 +90,15 @@ namespace RTSToolkitFree
 		public int targetId = -1;
 
 		public GameObject Target;
+		public Vector3 BestAttackPosition;
 
 		public List<int> attackers = new List<int>();
 
-		//public int noAttackers = 0;
 		public int maxAttackers = 3;
 
 		[HideInInspector] public float prevTargetD;
 		[HideInInspector] public int failedR = 0;
 		public int critFailedR = 100;
-
-		/*
-		public float health = 100.0f;
-		/// <summary>
-		/// Здоровье от 0 до 100 (0 - мертв)
-		/// </summary>
-		public float Health
-		{
-			get { return health; }
-			set
-			{
-				health = value;
-
-				if (health <= 0) { health = 0; isDying = true; }
-				if (health > 100) { health = 100; }
-				if (StatusBar != null)
-				{
-					StatusBar.SetHealth(health);
-				}
-				if (isDying == true)
-				{
-					agent.enabled = false;
-					//boxCollider.enabled = false;
-					StartCoroutine(DelayDeath(12));
-				}
-			}
-		}*/
 
 		public float Health
 		{
@@ -158,23 +132,16 @@ namespace RTSToolkitFree
 		}
 
 
-		public float maxHealth = 100.0f;
-		//public float selfHealFactor = 10.0f;
-
-		public float strength = 10.0f;
-		public float defence = 10.0f;
-
-		[HideInInspector] public bool changeMaterial = true;
-
 		public int MyNation = 0;
 		public int EnemyNation = 1;
 
 		private NavMeshAgent agent;
-		//private BoxCollider boxCollider;
-		private Renderer renderer;
 		private StatusBar StatusBar;
 
+		public UnitPose Pose;
 		private Weapon weapon;
+		private Eye Eye;
+
 
 		void Start()
 		{
@@ -187,11 +154,12 @@ namespace RTSToolkitFree
 			Precision.State = 70;
 
 			agent = GetComponent<NavMeshAgent>();
-			//boxCollider = GetComponent<BoxCollider>();
-			renderer = GetComponent<Renderer>();
 			StatusBar = GetComponentInChildren<StatusBar>();
+			Pose.Init(agent, StatusBar);
 
 			weapon = GetComponentInChildren<Weapon>();
+			Eye = GetComponent<Eye>();
+
 			/*Firearm firearm = weapon as Firearm;
 			if (firearm != null)
 			{
@@ -224,7 +192,7 @@ namespace RTSToolkitFree
 			GetComponent<UnityEngine.AI.NavMeshAgent>().enabled = false;
 
 
-			ChangeMaterial(Color.blue);
+			Pose.ChangeMaterial(Color.blue);
 
 			yield return new WaitForSeconds(argTime);
 			StartCoroutine(DelaySink());
@@ -235,7 +203,7 @@ namespace RTSToolkitFree
 
 		public IEnumerator DelaySink()
 		{
-			ChangeMaterial(new Color((148.0f / 255.0f), (0.0f / 255.0f), (211.0f / 255.0f), 1.0f));
+			Pose.ChangeMaterial(new Color((148.0f / 255.0f), (0.0f / 255.0f), (211.0f / 255.0f), 1.0f));
 
 			// moving sinking object down into the ground	
 			while (transform.position.y > -1.0f)
@@ -259,10 +227,10 @@ namespace RTSToolkitFree
 
 			if (agent.enabled)
 			{
-				agent.SetDestination(transform.position);
+				AgentStop();
 			}
 
-			ChangeMaterial(Color.yellow);
+			Pose.ChangeMaterial(Color.yellow);
 		}
 
 		public void UnSetSearching()
@@ -276,10 +244,10 @@ namespace RTSToolkitFree
 
 				if (agent.enabled)
 				{
-					agent.SetDestination(transform.position);
+					AgentStop();
 				}
 
-				ChangeMaterial(Color.grey);
+				Pose.ChangeMaterial(Color.grey);
 			}
 		}
 
@@ -514,6 +482,15 @@ namespace RTSToolkitFree
 			return ret;
 		}
 
+		public void AgentWalk(Vector3 argTarget)
+		{
+			agent.SetDestination(Discrete.Get2D(argTarget, 0.5f));
+		}
+
+		public void AgentStop()
+		{
+			agent.SetDestination(transform.position);
+		}
 
 
 		public void Approach()
@@ -543,27 +520,47 @@ namespace RTSToolkitFree
 						//agent.stoppingDistance = agent.radius / (transform.localScale.x) + target.agent.radius / (target.transform.localScale.x);
 						//float stoppDistance = (2f + transform.localScale.x * target.transform.localScale.x * agent.stoppingDistance);
 
-						agent.stoppingDistance = weapon.WorkDistance;
-
 						// если приближающийся уже близок к своей цели
 						if (newTargetD < weapon.WorkDistance)
 						{
-							agent.SetDestination(transform.position);
+							int view = Eye.PathOfSight(target.transform);
+							if (view != 0)
+							{
+								BestAttackPosition = GetBestEmptyPosition(target.transform);
+								float d = Vector3.Distance(transform.position, BestAttackPosition);
+								if (d > 0.1f)
+								{
+									agent.stoppingDistance = 0.1f;
+									AgentWalk(BestAttackPosition);
+								}
+								else
+								{
+									view = Eye.PathOfSight(target.transform);
 
-							// pre-setting for attacking
-							AttackBegin();
+									if (view == 0)
+									{
+										int a = 1;
+									}
+								}
+							}
+
+
+							if (view == 0)
+							{
+								AgentStop();
+								AttackBegin();
+							}
+
 						}
 						else
 						{
-							//ChangeMaterial(Color.green);
-
 							// начинаем двигаться
 							if (isMovable)
 							{
-								if ((agent.destination - target.transform.position).sqrMagnitude > 1f)
+								//if ((agent.destination - target.transform.position).sqrMagnitude > 1f)
 								{
-									agent.SetDestination(target.transform.position);
-									agent.speed = 3.5f;
+									agent.stoppingDistance = weapon.WorkDistance;
+									AgentWalk(target.transform.position);
 								}
 							}
 						}
@@ -575,13 +572,40 @@ namespace RTSToolkitFree
 				// condition for non approachable targets	
 				else
 				{
-					agent.SetDestination(transform.position);
-
+					AgentStop();
 					ResetTarget();
 				}
 			}
 
 		}
+
+
+		public Vector3 GetBestEmptyPosition(Transform argTarget)
+		{
+			float dstep = 0.5f;
+
+			Vector3 ret = Vector3.zero;
+			DiscreteMap_<int> mask = new DiscreteMap_<int>(transform.position, new Vector2Int(10, 10), dstep);
+
+			for (int i = 0; i < mask.Count; i++)
+			{
+				Vector3 point = Discrete.Get2D(transform.position, dstep) + mask[i].To3();
+				Unit unit = BattleSystem.active.FindNearestUnit(MyNation, point);
+
+				if (point.To2() != Discrete.Get2D(unit.transform.position, dstep).To2())
+				{
+					int view = Eye.PathOfSight(argTarget, mask[i].To3());
+
+					if (view == 0)
+					{
+						ret = point;
+						break;
+					}
+				}
+			}
+			return ret;
+		}
+
 
 		public void Attack()
 		{
@@ -594,7 +618,7 @@ namespace RTSToolkitFree
 					if (target != null)
 					{
 						//agent.stoppingDistance = agent.radius / (transform.localScale.x) + target.agent.radius / (target.transform.localScale.x);
-						agent.stoppingDistance = weapon.WorkDistance;
+						//agent.stoppingDistance = weapon.WorkDistance;
 
 						// distance between attacker and target
 
@@ -603,12 +627,17 @@ namespace RTSToolkitFree
 
 						// if target moves away, resetting back to approach target phase
 
+						int view = Eye.PathOfSight(target.transform);
+
 						if (rTarget > weapon.WorkDistance)
 						{
 							AttackCatchUp();
 						}
-						// attacker starts attacking their target	
-						else
+						else if (view == 1) // Препятствие на пути стрельбы
+						{
+							AttackCatchUp();
+						}
+						else if (view == 0)
 						{
 							// if attack passes target through target defence, cause damage to target
 							/*if (UnityEngine.Random.value > (strength / (strength + defence)))
@@ -632,13 +661,6 @@ namespace RTSToolkitFree
 		}
 
 
-		public void ChangeMaterial(Color argColor)
-		{
-			if (changeMaterial && renderer != null)
-			{
-				renderer.material.color = argColor;
-			}
-		}
 
 
 	}

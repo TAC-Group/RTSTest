@@ -1,4 +1,5 @@
 ﻿using System.Collections;
+using Tac;
 using Unity.VisualScripting;
 using UnityEngine;
 
@@ -12,13 +13,12 @@ namespace RTSToolkitFree
         public float size = 1.0f;
 
         public bool randomizeRotation = true;
-        public Vector3 Offset;
 
         public int Nation;
         SpawnWeapon SpawnWeapon;
+		DiscreteMap<Unit> map;
 
-
-        void Start()
+		void Start()
         {
             SpawnWeapon = World.GetSpawnWeapon(Nation);
             for (int i = 0; i < SpawnWeapon.Assortment.Count; i++)
@@ -26,54 +26,53 @@ namespace RTSToolkitFree
                 SpawnWeapon.Assortment[i].LeftCount = SpawnWeapon.Assortment[i].MaxCount;
 			}
 
-		 	StartCoroutine(Spawn());
+			map = new DiscreteMap<Unit>(transform.position, new Vector2Int(20, 20), 0.5f);
+			StartCoroutine(Spawn());
 		}
 
 
-        IEnumerator Spawn()
+
+		IEnumerator Spawn()
         {
             while(numberOfObjects > 0)
             {
 
-                /*Unit spawnPointUp = GetComponent<Unit>();
-                if(spawnPointUp != null)
-                {
-                    if(spawnPointUp.IsDead)
-                    {
-                        numberOfObjects = 0;
-                        break;
-                    }
-                }*/
-
-                Quaternion rotation = transform.rotation;
-                if (randomizeRotation)
-                {
-                    rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
-                }
-
                 Vector2 randPos = Random.insideUnitCircle * size;
 
-                Vector3 position = transform.position + new Vector3(randPos.x, 0f, randPos.y) + transform.rotation * Offset;
-                position = World.GetTerrainPosition(position);
+                Vector3 position = transform.position + new Vector3(randPos.x, 0f, randPos.y);
 
-                GameObject instance = World.Create(objectToSpawn, position, rotation);
+                position = Discrete.Get2D(position, 0.5f);
 
-                Unit unit = instance.GetComponent<Unit>();
-                if (unit != null)
+				Vector3? p = map.GetNearestEmpty(position);
+
+                if (p != null)
                 {
-                    if(unit.EnemyNation >= BattleSystem.active.numberNations)
+                    position = World.GetTerrainPosition(p.Value + map.Center);
+
+                    GameObject instance = World.Create(objectToSpawn, position);
+
+                    Unit unit = instance.GetComponent<Unit>();
+                    if (unit != null)
                     {
-                        BattleSystem.active.AddNation();
+                        map[p.Value.To2()] = unit;
+
+                        if (unit.EnemyNation >= BattleSystem.active.numberNations)
+                        {
+                            BattleSystem.active.AddNation();
+                        }
+
+                        unit.Init();
+                        unit.Id = World.GetId();
+                        unit.Pose.ChangeMaterial(Color.white);
+
+                        SpawnWeapon.AddWeapon(unit.WeaponPoint.transform);
+                        BattleSystem.active.AddUnit(unit);
                     }
-
-                    unit.Init();
-					unit.Id = World.GetId();
-                    unit.ChangeMaterial(Color.white);
-
-                    SpawnWeapon.AddWeapon(unit.WeaponPoint.transform);
-
-					BattleSystem.active.AddUnit(unit);
-				}
+                }
+                else
+                {
+                    int a = 1;
+                }
 
 				numberOfObjects--;
 			    yield return new WaitForSeconds(TimeStep);
