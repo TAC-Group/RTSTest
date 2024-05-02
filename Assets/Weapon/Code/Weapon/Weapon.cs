@@ -39,7 +39,7 @@ public class Weapon : MonoBehaviour
 	/// <summary>
 	/// Атаковать (наследники оружия должы переопределить этот метод)
 	/// </summary>
-	/// <param name="argAgent">Агет, которому принадлежит оружие</param>
+	/// <param name="argAgent">Агент, которому принадлежит оружие</param>
 	/// <param name="argEnemy">Враг, которого атакуют</param>
 	public virtual void Attack(GameObject argAgent, GameObject argEnemy) { }
 
